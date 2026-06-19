@@ -1,0 +1,17 @@
+data/raw/
+checkpoints/
+__pycache__/
+*.pyc
+*.pt
+*.pth
+.env
+.DS_Store
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+.idea/
+.vscode/
+*.ipynb_checkpoints/
+.ipynb_checkpoints/
