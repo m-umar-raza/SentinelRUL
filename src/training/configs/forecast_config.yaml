@@ -1,0 +1,23 @@
+model:
+  input_dim: 14
+  hidden_dim: 128
+  n_layers: 2
+  dropout: 0.2
+  horizon: 5
+
+data:
+  window_size: 30
+  forecast_horizon: 5
+  rul_clip: 125
+  val_engines: 20
+
+training:
+  batch_size: 256
+  epochs: 50
+  lr: 0.001
+  weight_decay: 0.00001
+  grad_clip: 1.0
+  seed: 42
+
+output:
+  checkpoint_dir: checkpoints/forecast
