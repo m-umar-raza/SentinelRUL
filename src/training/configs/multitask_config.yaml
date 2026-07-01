@@ -1,0 +1,29 @@
+model:
+  input_dim: 14
+  hidden_dim: 128
+  n_layers: 2
+  dropout: 0.2
+  horizon: 5
+
+data:
+  window_size: 30
+  forecast_horizon: 5
+  rul_clip: 125
+  val_engines: 20
+
+training:
+  batch_size: 256
+  epochs: 40
+  lr: 0.001
+  weight_decay: 0.00001
+  alpha: 0.5
+  freeze_backbone_epochs: 0
+  early_stop_patience: 8
+  seed: 42
+
+pretrained:
+  forecast_checkpoint: checkpoints/forecast/best.pt
+
+output:
+  checkpoint_dir: checkpoints/multitask
+  save_best_by: val_rul_rmse
