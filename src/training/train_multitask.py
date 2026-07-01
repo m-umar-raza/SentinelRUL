@@ -67,3 +67,24 @@ class MultitaskTrainer:
     def _set_backbone_trainable(self, trainable):
         for p in self.model.backbone.parameters():
             p.requires_grad = trainable
+
+    def train_epoch(self, loader, epoch):
+        self._set_backbone_trainable(epoch > self.freeze_backbone_epochs)
+        self.model.train()
+        running = {"total": 0.0, "forecast": 0.0, "rul": 0.0, "n": 0}
+        for x, y_rul, y_fore in loader:
+            x = x.to(self.device)
+            y_rul = y_rul.to(self.device)
+            y_fore = y_fore.to(self.device)
+            self.optimizer.zero_grad()
+            forecast_pred, rul_pred = self.model(x)
+            loss, parts = self.criterion(forecast_pred, rul_pred, y_fore, y_rul)
+            loss.backward()
+            self.optimizer.step()
+            bs = x.size(0)
+            running["total"] += loss.item() * bs
+            running["forecast"] += parts["forecast"].item() * bs
+            running["rul"] += parts["rul"].item() * bs
+            running["n"] += bs
+        n = running["n"]
+        return {k: running[k] / n for k in ("total", "forecast", "rul")}
