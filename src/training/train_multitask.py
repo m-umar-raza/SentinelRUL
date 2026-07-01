@@ -1,11 +1,13 @@
 import argparse
 import os
 import math
+import json
 import random
 
 import numpy as np
 import torch
 from torch.optim import Adam
+from torch.utils.data import DataLoader
 import yaml
 
 from ..data.loader import load_train
@@ -140,3 +142,75 @@ class MultitaskTrainer:
     def save(self, name):
         path = os.path.join(self.checkpoint_dir, name)
         torch.save({"model_state": self.model.state_dict()}, path)
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--config",
+        default=os.path.join(os.path.dirname(__file__), "configs", "multitask_config.yaml"),
+    )
+    args = parser.parse_args()
+
+    with open(args.config) as f:
+        cfg = yaml.safe_load(f)
+
+    set_seed(cfg["training"]["seed"])
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    print(f"device: {device}")
+
+    raw = load_train()
+    full, mins, maxs = prepare_train(raw, rul_clip=cfg["data"]["rul_clip"])
+    train_df, val_df = split_by_engine(full, cfg["data"]["val_engines"], cfg["training"]["seed"])
+
+    window = cfg["data"]["window_size"]
+    horizon = cfg["data"]["forecast_horizon"]
+    X_tr, y_rul_tr, y_fore_tr = make_windows(train_df, window, horizon)
+    X_val, y_rul_val, y_fore_val = make_windows(val_df, window, horizon)
+
+    bs = cfg["training"]["batch_size"]
+    train_loader = DataLoader(
+        CMAPSSWindows(X_tr, y_rul_tr, y_fore_tr), batch_size=bs, shuffle=True
+    )
+    val_loader = DataLoader(
+        CMAPSSWindows(X_val, y_rul_val, y_fore_val), batch_size=bs, shuffle=False
+    )
+
+    model = SentinelRUL(
+        input_dim=cfg["model"]["input_dim"],
+        hidden_dim=cfg["model"]["hidden_dim"],
+        n_layers=cfg["model"]["n_layers"],
+        dropout=cfg["model"]["dropout"],
+        horizon=cfg["model"]["horizon"],
+    )
+    load_pretrained_backbone(model, cfg["pretrained"]["forecast_checkpoint"])
+
+    trainer = MultitaskTrainer(
+        model,
+        device=device,
+        lr=cfg["training"]["lr"],
+        weight_decay=cfg["training"]["weight_decay"],
+        alpha=cfg["training"]["alpha"],
+        freeze_backbone_epochs=cfg["training"]["freeze_backbone_epochs"],
+        checkpoint_dir=cfg["output"]["checkpoint_dir"],
+    )
+
+    history = trainer.fit(
+        train_loader,
+        val_loader,
+        cfg["training"]["epochs"],
+        early_stop_patience=cfg["training"].get("early_stop_patience"),
+    )
+
+    ckpt_dir = cfg["output"]["checkpoint_dir"]
+    scaler = {"mins": mins.to_dict(), "maxs": maxs.to_dict(), "sensors": SENSOR_COLS}
+    with open(os.path.join(ckpt_dir, "scaler.json"), "w") as f:
+        json.dump(scaler, f)
+    with open(os.path.join(ckpt_dir, "history.json"), "w") as f:
+        json.dump(history, f, indent=2)
+
+    print(f"best val_rul_rmse: {trainer.best_val_rmse:.3f}")
+
+
+if __name__ == "__main__":
+    main()
