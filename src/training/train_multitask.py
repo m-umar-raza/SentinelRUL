@@ -109,3 +109,34 @@ class MultitaskTrainer:
             "val_rul_rmse": math.sqrt(sse_rul / n_rul),
             "val_forecast_rmse": math.sqrt(sse_fore / n_fore),
         }
+
+    def fit(self, train_loader, val_loader, epochs, early_stop_patience=None):
+        history = []
+        epochs_since_improvement = 0
+        for epoch in range(1, epochs + 1):
+            train_metrics = self.train_epoch(train_loader, epoch)
+            val_metrics = self.validate(val_loader)
+            row = {"epoch": epoch, **train_metrics, **val_metrics}
+            history.append(row)
+            print(
+                f"epoch {epoch:3d} | "
+                f"train_loss {train_metrics['total']:.4f} "
+                f"(fore {train_metrics['forecast']:.4f}, rul {train_metrics['rul']:.4f}) | "
+                f"val_rul_rmse {val_metrics['val_rul_rmse']:.3f} "
+                f"val_fore_rmse {val_metrics['val_forecast_rmse']:.4f}"
+            )
+            if val_metrics["val_rul_rmse"] < self.best_val_rmse:
+                self.best_val_rmse = val_metrics["val_rul_rmse"]
+                epochs_since_improvement = 0
+                self.save("best.pt")
+            else:
+                epochs_since_improvement += 1
+                if early_stop_patience and epochs_since_improvement >= early_stop_patience:
+                    print(f"no improvement in {early_stop_patience} epochs, stopping early")
+                    break
+        self.save("last.pt")
+        return history
+
+    def save(self, name):
+        path = os.path.join(self.checkpoint_dir, name)
+        torch.save({"model_state": self.model.state_dict()}, path)
