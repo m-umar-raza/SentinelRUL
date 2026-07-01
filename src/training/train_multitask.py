@@ -88,3 +88,24 @@ class MultitaskTrainer:
             running["n"] += bs
         n = running["n"]
         return {k: running[k] / n for k in ("total", "forecast", "rul")}
+
+    @torch.no_grad()
+    def validate(self, loader):
+        self.model.eval()
+        sse_rul = 0.0
+        sse_fore = 0.0
+        n_rul = 0
+        n_fore = 0
+        for x, y_rul, y_fore in loader:
+            x = x.to(self.device)
+            y_rul = y_rul.to(self.device)
+            y_fore = y_fore.to(self.device)
+            forecast_pred, rul_pred = self.model(x)
+            sse_rul += ((rul_pred - y_rul) ** 2).sum().item()
+            n_rul += y_rul.numel()
+            sse_fore += ((forecast_pred - y_fore) ** 2).sum().item()
+            n_fore += y_fore.numel()
+        return {
+            "val_rul_rmse": math.sqrt(sse_rul / n_rul),
+            "val_forecast_rmse": math.sqrt(sse_fore / n_fore),
+        }
