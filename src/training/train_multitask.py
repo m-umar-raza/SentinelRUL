@@ -1,9 +1,11 @@
 import argparse
 import os
+import math
 import random
 
 import numpy as np
 import torch
+from torch.optim import Adam
 import yaml
 
 from ..data.loader import load_train
@@ -38,3 +40,30 @@ def load_pretrained_backbone(model, checkpoint_path):
     backbone_state = {k: v for k, v in state.items() if k.startswith("backbone.")}
     model.load_state_dict(backbone_state, strict=False)
     print(f"loaded pretrained backbone from {checkpoint_path} ({len(backbone_state)} tensors)")
+
+
+class MultitaskTrainer:
+    """Joint training loop that starts from a forecast pretrained backbone."""
+
+    def __init__(
+        self,
+        model,
+        device="cpu",
+        lr=1e-3,
+        weight_decay=1e-5,
+        alpha=0.5,
+        freeze_backbone_epochs=0,
+        checkpoint_dir="checkpoints/multitask",
+    ):
+        self.model = model.to(device)
+        self.device = device
+        self.criterion = JointLoss(forecast_weight=alpha, rul_weight=1.0)
+        self.optimizer = Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
+        self.freeze_backbone_epochs = freeze_backbone_epochs
+        self.checkpoint_dir = checkpoint_dir
+        os.makedirs(checkpoint_dir, exist_ok=True)
+        self.best_val_rmse = math.inf
+
+    def _set_backbone_trainable(self, trainable):
+        for p in self.model.backbone.parameters():
+            p.requires_grad = trainable
