@@ -60,3 +60,21 @@ cd SentinelRUL
 pip install -r requirements.txt
 python data/download.py
 ```
+
+## Training
+
+Training happens in two stages so the shared backbone learns sensor dynamics before it ever sees an RUL label.
+
+1. **Forecast pretraining** (backbone only, self supervised on the next 5 sensor cycles):
+   ```bash
+   python -m src.training.train_forecast --config src/training/configs/forecast_config.yaml
+   ```
+   Best checkpoint lands at `checkpoints/forecast/best.pt`.
+
+2. **Multitask training** (RUL head plus forecast head, backbone initialised from step 1):
+   ```bash
+   python -m src.training.train_multitask --config src/training/configs/multitask_config.yaml
+   ```
+   Loads `checkpoints/forecast/best.pt` if present, otherwise starts the backbone from scratch. Joint loss is `alpha * forecast_mse + rul_mse` with `alpha=0.5`. Best checkpoint lands at `checkpoints/multitask/best.pt`.
+
+Both stages were trained on Kaggle GPUs using the notebooks under `notebooks/`, since this repo is developed on a CPU only machine.
